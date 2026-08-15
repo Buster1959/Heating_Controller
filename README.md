@@ -121,4 +121,4 @@ current status.
 
 ## License
 
-TBD.
+[MIT](LICENSE) — use it, modify it, redistribute it, no strings attached.
