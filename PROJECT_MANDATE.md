@@ -246,6 +246,36 @@ a full HA Core restart (not just "Reload"), and hard-refresh the browser
 tab (Ctrl+Shift+R) afterwards. This is also HA's own documented advice for
 testing translation changes.
 
+### Coordinator built (Milestone 2) — decisions made without you in the room
+Built while you were offline, so these are flagged clearly for review
+rather than assumed correct:
+
+- **Multi-TRV/multi-sensor rooms.** The old schema was always exactly one
+  TRV and one sensor per room; the new schema allows several of each, and
+  there was no precedent for how to combine them. Decision: room
+  temperature = **average** of all active sensors in the room (reduces
+  single-sensor noise); room setpoint = **highest** setpoint among the
+  room's TRVs (any one TRV wanting it warmer makes the room "demanding").
+  **This needs your sign-off** — it's a reasonable default, not a
+  requirement you specified.
+- **Override switch architecture.** `AshpZoneOverrideSwitch` (switch.py)
+  registers itself into `coordinator.override_switches[zone_id]` on
+  `async_added_to_hass()` and the Coordinator checks the live entity
+  object's `.is_on` directly, rather than doing a `hass.states.get()`
+  lookup against a guessed entity_id. Avoids any string-matching fragility
+  between the switch platform and the coordinator.
+- **Multiple switches per zone.** The re-enable delay and override are
+  gated once per zone (not per switch); once the zone is cleared to act,
+  every configured switch in that zone is driven independently — one
+  unavailable switch doesn't block the others in the same zone.
+- **Diagnostic sensor.** `AshpZoneDemandSensor` (sensor.py) mirrors the old
+  `input_text.<floor>_demanding_rooms` helper: state is `Demand` / `No
+  demand` / `Switch unavailable`, with the room-by-room demand lines as an
+  attribute.
+- **Not yet tested against real or dummy TRVs** — built and
+  `py_compile`-clean, but the sandbox this was built in can't run Home
+  Assistant itself. First real test is on your Proxmox rig.
+
 ## 6. Testing plan
 
 - New Proxmox HA host, dummy/old TRVs and spare temperature sensors —
@@ -263,8 +293,10 @@ testing translation changes.
    `ashp_rooms.json` import step (still pending — see Migration path).
 2. Port Coordinator control loop from `ashp_controller.py` — **using the
    re-enable delay, not hysteresis** (§5); create the per-zone override
-   switch (§5); validate against dummy TRVs on the Proxmox rig. **Not
-   started.**
+   switch (§5); validate against dummy TRVs on the Proxmox rig. **Built,
+   `py_compile`-clean, not yet tested against live/dummy TRVs** — see §5's
+   "Coordinator built" entry for the decisions made that need sign-off
+   before you trust it against real switches.
 3. ~~Options Flow for zone/room/TRV/sensor management.~~ **Done** — built
    ahead of Milestone 2, and more capable than originally scoped (see
    §3.1/§3.3).
