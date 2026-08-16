@@ -1,8 +1,9 @@
 <p align="center">
-  <img src="custom_components/ashp_zone_control/brand/icon.png" width="96" height="96" alt="ASHP Zone Control icon">
+  <img src="custom_components/ashp_zone_control/brand/icon.png" width="96" height="96" alt="ZEAL icon">
 </p>
 
-<h1 align="center">ASHP Zone Control</h1>
+<h1 align="center">ZEAL</h1>
+<p align="center"><em>Zoned, Efficient, Adaptive, Learning — formerly "ASHP Zone Control"</em></p>
 
 <p align="center">
   Zone-based heating control for Home Assistant — configure zones, rooms, TRVs and
@@ -10,11 +11,12 @@
   webserver, no custom card required to get started.
 </p>
 
-> **📛 Renaming to ZEAL (Zoned, Efficient, Adaptive, Learning).** The GitHub repo is
-> renamed ([`Buster1959/ZEAL`](https://github.com/Buster1959/ZEAL)) — the domain,
-> filenames, and class names inside still say "ASHP Zone Control" / `ashp_zone_control`
-> throughout. That remaining rename will land as one deliberate pass (with a
-> config-entry migration path for anyone already set up), not gradually, to avoid a
+> **📛 Rename in progress: display name done, code still pending.** The GitHub
+> repo ([`Buster1959/ZEAL`](https://github.com/Buster1959/ZEAL)) and this README
+> now say ZEAL — but the domain, filenames, and class names inside the actual
+> Python code still say "ASHP Zone Control" / `ashp_zone_control` throughout.
+> That code-level rename will land as one deliberate pass (with a config-entry
+> migration path for anyone already set up), not gradually, to avoid a
 > half-renamed integration breaking existing installs.
 
 > **⚠️ Early development — the control loop exists but hasn't been validated against
