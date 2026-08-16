@@ -2,7 +2,7 @@
   <img src="custom_components/ashp_zone_control/brand/icon.png" width="96" height="96" alt="ASHP Zone Control icon">
 </p>
 
-<h1 align="center">ASHP Zone Control</h1>
+<h1 align="center">Zone Based, Adaptive Learning Heating Control</h1>
 
 <p align="center">
   Zone-based heating control for Home Assistant — configure zones, rooms, TRVs and
