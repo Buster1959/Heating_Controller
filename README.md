@@ -2,7 +2,7 @@
   <img src="custom_components/ashp_zone_control/brand/icon.png" width="96" height="96" alt="ASHP Zone Control icon">
 </p>
 
-<h1 align="center">Zone Based, Adaptive, Learning, Heating Control</h1>
+<h1 align="center">ASHP Zone Control</h1>
 
 <p align="center">
   Zone-based heating control for Home Assistant — configure zones, rooms, TRVs and
@@ -72,6 +72,20 @@ The Coordinator hasn't been run against live hardware yet — it's `py_compile`-
 but untested. A couple of behaviours worth checking against how you actually want
 your system to work:
 
+> **📛 Pre-v1 development notice: expect to delete and recreate zones after
+> updates, repeatedly, until v1 ships.** This is still actively being designed
+> and tested one stage at a time — schema fields get renamed, restructured, or
+> given new required values as real testing on hardware surfaces what actually
+> needs to change (see the switch-field example just below, and the Decisions
+> Log in the project definition doc for the full history). Some of these changes
+> are backward-compatible (existing zones keep working with sensible defaults);
+> others are breaking and require reopening **Configure** to reassign a field or
+> just deleting and recreating the zone from scratch. **Assume the breaking kind
+> until v1 is actually tagged** — don't treat a forced reconfiguration as a bug,
+> and don't build anything you depend on around a specific schema shape until
+> then. Each release's notes (or the project doc's Decisions Log) will say which
+> kind of change happened.
+
 - **Rooms with more than one TRV or sensor.** The original setup was always exactly
   one TRV and one sensor per room. The new schema allows several of each: room
   temperature is the **average** of all its sensors, and room setpoint is the
@@ -79,14 +93,14 @@ your system to work:
   demand). This is confirmed as the intended behaviour, not a placeholder — see
   `coordinator.py`'s `_room_setpoint`/`_room_temperature` methods if you want the
   detail.
-- **If you configured any zones before 16 Aug 2026,** the switch field changed
-  from a list (`switches: [...]`, supporting multiple switches per zone) to a
-  single value (`switch: <entity_id>`) once it was confirmed a zone only ever has
-  one heating actuator switch in practice. The old list key isn't read by the new
-  code — reopen **Configure** and reassign each zone's switch after updating.
-  (The heat-source and re-enable-delay fields added the same day are **not**
-  breaking — an existing zone just behaves as ASHP-with-300s-delay until you
-  reopen Configure and change it.)
+- **Switch field changed 16 Aug 2026 (breaking).** From a list (`switches: [...]`,
+  supporting multiple switches per zone) to a single value (`switch: <entity_id>`)
+  once it was confirmed a zone only ever has one heating actuator switch in
+  practice. The old list key isn't read by the new code — reopen **Configure**
+  and reassign each zone's switch after updating.
+- **Heat-source and re-enable-delay fields added 16 Aug 2026 (non-breaking).** An
+  existing zone just behaves as ASHP-with-300s-delay until you reopen Configure
+  and change it.
 - **First run drives real switches.** The moment this integration is reloaded with
   zones configured, the Coordinator evaluates and acts — it doesn't wait for you to
   press a "start" button. Test with dummy/spare TRVs and switches before pointing it
@@ -192,6 +206,7 @@ that instead.
 | 5. Polish — diagnostics sensor, translations, entity icons | Diagnostics sensor and brand icon done; rest pending |
 | 6. HACS store submission, including the full ZEAL rename (domain, files, repo) with a migration path for existing installs | Pending |
 | 7. Adaptive schedule suggestions (learns from manual boost history, notifies rather than auto-applies) | Post-v1, planned |
+| — ASHP heating + cooling (long-term goal, contingent on a physical cooling-radiator retrofit) | Schema reserved (hidden, unused), design not finalised — see project doc §10 |
 
 ## Troubleshooting
 
@@ -214,4 +229,22 @@ current status.
 
 ## License
 
-[MIT](LICENSE) — use it, modify it, redistribute it, no strings attached.
+[PolyForm Shield 1.0.0](LICENSE) — free to use, modify, and distribute for any
+purpose, including commercially, with one restriction: you can't use it to build
+a competing product. See the [LICENSE](LICENSE) file for the full, official text.
+
+---
+
+📖 **This repo has a companion [wiki](../../wiki)** with the full project
+definition, decisions log, and long-term design docs (including the ASHP
+heating+cooling roadmap) — more detail than belongs in a README, and edited
+far more often than the code itself. It's a **separate git repository** from
+this one (`git clone https://github.com/Buster1959/ZEAL.wiki.git`), so
+cloning or downloading this repo alone does **not** bring the wiki with it.
+If you're cloning for offline use or archival purposes, clone both:
+
+```bash
+git clone https://github.com/Buster1959/ZEAL.git
+git clone https://github.com/Buster1959/ZEAL.wiki.git
+```
+
