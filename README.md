@@ -1,9 +1,9 @@
 <p align="center">
-  <img src="custom_components/ashp_zone_control/brand/icon.png" width="96" height="96" alt="ZEAL icon">
+  <img src="custom_components/zeal/brand/icon.png" width="96" height="96" alt="ZEAL icon">
 </p>
 
 <h1 align="center">ZEAL</h1>
-<p align="center"><em>Zoned, Efficient, Adaptive, Learning — formerly "ASHP Zone Control"</em></p>
+<p align="center"><em>Zoned, Efficient, Adaptive, Learning — working name, draft project pre-v1</em></p>
 
 <p align="center">
   Zone-based heating control for Home Assistant — configure zones, rooms, TRVs and
@@ -11,13 +11,17 @@
   webserver, no custom card required to get started.
 </p>
 
-> **📛 Rename in progress: display name done, code still pending.** The GitHub
-> repo ([`Buster1959/ZEAL`](https://github.com/Buster1959/ZEAL)) and this README
-> now say ZEAL — but the domain, filenames, and class names inside the actual
-> Python code still say "ASHP Zone Control" / `ashp_zone_control` throughout.
-> That code-level rename will land as one deliberate pass (with a config-entry
-> migration path for anyone already set up), not gradually, to avoid a
-> half-renamed integration breaking existing installs.
+> **📛 Draft project, pre-v1 — nothing here is final, including the name.** The
+> GitHub repo is [`Buster1959/ZEAL`](https://github.com/Buster1959/ZEAL), and as
+> of 17 Aug 2026 the code matches too: domain `zeal`, folder
+> `custom_components/zeal`, manifest name "ZEAL HVAC System", class names
+> `Zeal*` throughout. Still a draft — any of this, naming included, may change
+> again before v1. **This rename is breaking** for any existing config entry:
+> Home Assistant treats the domain as part of a config entry's stored identity,
+> so an install set up under the old `ashp_zone_control` domain will not
+> automatically pick up as `zeal` — remove the old integration instance and
+> add it fresh under the new domain. Per the standing pre-v1 policy above,
+> expect this kind of breaking change until v1 is actually tagged.
 
 > **⚠️ Early development — the control loop exists but hasn't been validated against
 > real or dummy hardware yet.** Configuration (Config Flow + Options Flow) and the
@@ -64,7 +68,7 @@
   never written by an automated timer.
 - No "away mode" / holiday calendar integration yet.
 - No dashboard card yet — all configuration happens through Settings → Devices &
-  Services → ASHP Zone Control → Configure.
+  Services → ZEAL HVAC System → Configure.
 
 See [Roadmap](#roadmap) for what's planned and in what order.
 
@@ -116,12 +120,12 @@ This integration isn't in the default HACS store yet. Add it as a custom reposit
 
 1. HACS → Integrations → ⋮ (top right) → **Custom repositories**.
 2. Repository: this repo's URL. Category: **Integration**.
-3. Find **ASHP Zone Control** in HACS and install it.
+3. Find **ZEAL HVAC System** in HACS and install it.
 4. Restart Home Assistant.
 
 ### Manual
 
-1. Copy `custom_components/ashp_zone_control` into your Home Assistant
+1. Copy `custom_components/zeal` into your Home Assistant
    `config/custom_components/` directory.
 2. Restart Home Assistant.
 
@@ -129,8 +133,8 @@ This integration isn't in the default HACS store yet. Add it as a custom reposit
 
 All configuration is done via the UI — no YAML.
 
-1. **Settings → Devices & Services → Add Integration → ASHP Zone Control.**
-   Give the integration instance a name (e.g. "ASHP Zone Control").
+1. **Settings → Devices & Services → Add Integration → ZEAL HVAC System.**
+   Give the integration instance a name (e.g. "ZEAL HVAC System").
 2. Open **Configure** on the integration card. You'll land on the zone menu:
    - **+ Add a new zone** — creates a zone (default name "Zone N").
    - **Pick rooms** — choose which HA Areas belong to this zone.

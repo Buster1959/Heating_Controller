@@ -1,4 +1,4 @@
-# ZEAL (ASHP Zone Control) — Test Plan
+# ZEAL HVAC System — Test Plan
 
 *For the current build: Config Flow + Options Flow (Milestones 1 & 3, done)
 and the Coordinator control loop (Milestone 2, built, not yet run against
@@ -28,7 +28,7 @@ HA install — every step names the exact screen, tab, and field.*
 Two places, neither of them a dedicated dashboard:
 
 **A. Reopen the Options Flow.**
-`Settings → Devices & Services → ZEAL (or "ASHP Zone Control" pre-rename)
+`Settings → Devices & Services → ZEAL HVAC System
 → Configure`. Every screen pre-fills with your current saved values — the
 zone menu lists each zone's name and room count, and stepping into a zone
 shows its current rooms, switch, and per-room TRV/sensor picks. This is
