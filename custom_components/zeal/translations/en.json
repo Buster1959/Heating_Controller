@@ -1,1 +1,74 @@
-
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Set up ZEAL HVAC System",
+        "description": "Name this integration instance. Zones, rooms, TRVs and sensors are configured afterwards via Configure.",
+        "data": {
+          "name": "Name"
+        }
+      }
+    },
+    "abort": {
+      "already_configured": "An instance with this name already exists."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Heating zones: {zone_summary}",
+        "description": "Add, edit or remove a zone below, or choose Done to save.",
+        "data": {
+          "action": "Action"
+        }
+      },
+      "select_rooms": {
+        "title": "Rooms: {zone_name}",
+        "description": "Choose which Areas belong to this zone. An Area can only belong to one zone — picking it here removes it from any other zone it's currently in.",
+        "data": {
+          "areas": "Rooms (Areas)"
+        }
+      },
+      "zone_details": {
+        "title": "Name this zone: {current_name}",
+        "description": "Rooms: {room_summary}. Give the zone a descriptive name (e.g. \"Ground Floor\") and pick the heating actuator switch (pump/relay) it should control. A zone has exactly one switch.",
+        "data": {
+          "name": "Zone name",
+          "switch": "Heating actuator switch"
+        }
+      },
+      "zone_heat_source": {
+        "title": "Heat source: {zone_name}",
+        "description": "What heats this zone? This affects the suggested anti-short-cycling delay on the next screen — different heat sources ramp up and respond to cycling differently. See the README section \"Heat sources and heating profiles\" for the full explanation. You can change the suggested delay on the next screen regardless of what you pick here.",
+        "data": {
+          "heat_source": "Heat source"
+        }
+      },
+      "zone_reenable_delay": {
+        "title": "Re-enable delay: {zone_name}",
+        "description": "After this zone's switch turns off, how long before it's allowed to turn back on again? This prevents rapid on/off cycling. Suggested for the heat source you picked: {suggested} seconds — pre-filled below, but change it to whatever suits your actual equipment.",
+        "data": {
+          "reenable_delay": "Re-enable delay (seconds)"
+        }
+      },
+      "room_entities": {
+        "title": "Options: {room_name}",
+        "description": "Zone: {zone_name}. Found {trv_count} TRV(s) and {sensor_count} temperature sensor(s) already assigned to this Area. Untick any that shouldn't be treated as active for this room. Turn the room off entirely below if it shouldn't take part in heating demand at all (e.g. an unoccupied guest room).",
+        "data": {
+          "active": "Room is active",
+          "trvs": "Active TRV(s)",
+          "sensors": "Active temperature sensor(s)"
+        },
+        "data_description": {
+          "active": "When off, this room is skipped entirely and never triggers its zone's heating switch."
+        }
+      }
+    },
+    "abort": {
+      "no_areas_defined": "No Areas are defined in this Home Assistant instance yet. Create at least one Area under Settings → Areas & Zones, then reopen this options flow."
+    },
+    "create_entry": {
+      "default": "Here's what was saved:\n\n{summary}"
+    }
+  }
+}
