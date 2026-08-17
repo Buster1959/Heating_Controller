@@ -3,7 +3,7 @@
 </p>
 
 <h1 align="center">ZEAL</h1>
-<h1 align="center">Zoned, Efficient, Adaptive, Learning — draft project pre-v1</h1>
+<p align="center"><em>Zoned, Efficient, Adaptive, Learning — working name, draft project pre-v1</em></p>
 
 <p align="center">
   Zone-based heating control for Home Assistant — configure zones, rooms, TRVs and
@@ -51,11 +51,15 @@
   excluded from heating demand without removing its configuration.
 - A saved-configuration summary (zones → switch → heat source → re-enable delay
   → rooms → active TRVs/sensors) is shown after every save.
+- Every room with a TRV gets its own **Thermostat** entity — the room's actual
+  setpoint, not any individual physical TRV. Change it (or physically adjust any
+  TRV in the room) and every TRV in that room follows automatically, kept in sync
+  by the Coordinator.
 - A **Coordinator** evaluates every active room every 60 seconds (and instantly on
   any tracked TRV/sensor state change), turns each zone's heating switch on when
-  any active room is colder than its TRV setpoint, and off when none are — with a
-  **re-enable delay** (per zone, editable — suggested default depends on heat
-  source) after switching off, so a zone can't rapidly cycle.
+  any active room is colder than its room Thermostat's target, and off when none
+  are — with a **re-enable delay** (per zone, editable — suggested default depends
+  on heat source) after switching off, so a zone can't rapidly cycle.
 - Each zone gets a **Manual override switch** (created automatically) — turn it on
   to take that zone out of automatic control entirely.
 - Each zone gets a **Demand sensor** showing `Demand` / `No demand`, with which
@@ -216,11 +220,20 @@ that instead.
 
 ## Troubleshooting
 
-**Options Flow shows stale text, an old field name, or a `formatjs MISSING_VALUE`
-error after an update.** Home Assistant caches a custom integration's translations.
-A config-entry *reload* alone won't refresh `strings.json` changes — do a full HA
-Core **restart**, then a hard refresh of the browser tab (Ctrl+Shift+R / Cmd+Shift+R)
-to clear the cached translation bundle.
+**Options Flow shows raw keys (e.g. "name" instead of "Zone name"), stale text,
+or a `formatjs MISSING_VALUE` error after an update.** Two separate issues, both
+in the same area:
+
+1. Custom integrations load `translations/en.json` at runtime, **not**
+   `strings.json` — `strings.json` is just the editable source. If you edit
+   `strings.json` and forget to copy the same change into
+   `translations/en.json`, HA will show raw field/step keys because the file
+   it actually reads never changed. Both files need to stay in sync by hand;
+   there's no build step doing this automatically for a HACS-style integration.
+2. Even with both files correctly in sync, Home Assistant caches a custom
+   integration's translations — a config-entry *reload* alone won't pick up the
+   change. Do a full HA Core **restart**, then a hard refresh of the browser tab
+   (Ctrl+Shift+R / Cmd+Shift+R) to clear the cached bundle.
 
 **An Area doesn't show up as a room option.** Make sure it's defined under
 Settings → Areas & Zones, and that at least one entity (TRV, sensor, or anything

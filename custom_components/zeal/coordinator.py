@@ -13,15 +13,22 @@ the original, both captured with their rationale in PROJECT_MANDATE.md:
     `input_boolean` helper.
 
 New in this schema vs. the original (which was always exactly one TRV and
-one sensor per room): a room can have *multiple* TRVs and/or sensors. There
-is no precedent for how to combine them, so a decision had to be made here
-rather than guessed at:
+one sensor per room): a room can have *multiple* TRVs and/or sensors.
   * Room temperature = the **average** of all its active sensors' readings
     (reduces single-sensor noise; standard practice for multi-sensor rooms).
-  * Room setpoint = the **highest** setpoint among its TRVs (if any one TRV
-    in the room wants it warmer, the room counts as demanding heat).
-This is a reasonable default, not a verified requirement - worth checking
-against how you'd actually want a multi-TRV room to behave.
+  * Room setpoint = read from that room's ZealRoomThermostat entity (see
+    climate.py) - a single per-room master the Coordinator treats as the
+    room's actual source of truth. Physical TRVs are slaved to it: this
+    Coordinator propagates the thermostat's target_temperature out to
+    every TRV in the room whenever it changes, and conversely, detects an
+    unexpected change on any *physical* TRV and both updates the
+    thermostat to match and re-propagates to the room's other TRVs - so a
+    manual adjustment on any one TRV becomes the room's setpoint
+    everywhere, not just on the TRV someone happened to touch. This
+    supersedes an earlier "highest setpoint among the room's TRVs" default
+    and a separate planned-but-never-built 2-hour "boost" mechanic - both
+    are obsolete now that there's a real per-room entity to be the
+    setpoint authority instead of inferring one from N TRVs' raw states.
 """
 from __future__ import annotations
 
@@ -44,6 +51,8 @@ from .const import (
     DEFAULT_SCAN_INTERVAL,
     DOMAIN,
     ROOM_ACTIVE,
+    ROOM_ID,
+    ROOM_NAME,
     ROOM_SENSORS,
     ROOM_TRVS,
     RUNTIME_LAST_OFF,
@@ -95,6 +104,20 @@ class ZealCoordinator(DataUpdateCoordinator[dict[str, ZoneStatus]]):
         # guesswork about the override switch's entity_id.
         self.override_switches: dict[str, Any] = {}
 
+        # Populated by ZealRoomThermostat.async_added_to_hass() /
+        # removed on async_will_remove_from_hass() - same live-object
+        # pattern as override_switches above. Each room's thermostat is
+        # the room's actual setpoint authority (see climate.py); physical
+        # TRVs are slaved to it, not the other way around.
+        self.room_thermostats: dict[str, Any] = {}
+
+        # entity_id (TRV) -> last temperature we ourselves wrote to it, via
+        # async_propagate_room_setpoint(). Self-write loop guard: without
+        # this, propagating a thermostat's setpoint to a TRV would trigger
+        # the TRV's own state-change listener, which would read it back as
+        # a new *external* change and re-propagate indefinitely.
+        self._last_written_setpoint: dict[str, float] = {}
+
         self._unsub_state_listener: Callable[[], None] | None = None
 
     # ------------------------------------------------------------------
@@ -145,6 +168,22 @@ class ZealCoordinator(DataUpdateCoordinator[dict[str, ZoneStatus]]):
     def _async_handle_tracked_state_change(
         self, event: Event[EventStateChangedData]
     ) -> None:
+        entity_id = event.data["entity_id"]
+        new_state = event.data["new_state"]
+        old_state = event.data["old_state"]
+
+        # Only TRVs carry a "temperature" attribute we care about here;
+        # sensor state changes fall through to the plain refresh below.
+        if new_state is not None and old_state is not None:
+            new_temp = new_state.attributes.get("temperature")
+            old_temp = old_state.attributes.get("temperature")
+            if new_temp is not None and new_temp != old_temp:
+                room = self._find_room_for_trv(entity_id)
+                if room is not None:
+                    self.hass.async_create_task(
+                        self._async_handle_external_trv_change(room, entity_id, new_temp)
+                    )
+
         self.hass.async_create_task(self.async_request_refresh())
 
     # ------------------------------------------------------------------
@@ -198,7 +237,20 @@ class ZealCoordinator(DataUpdateCoordinator[dict[str, ZoneStatus]]):
                 continue
 
             room_name = room.get("name", room.get("room_id", "unknown room"))
-            set_temp = self._room_setpoint(room)
+            room_id = room.get(ROOM_ID)
+            thermostat = self.room_thermostats.get(room_id)
+
+            if thermostat is not None:
+                if getattr(thermostat, "hvac_mode", None) == "off":
+                    continue
+                set_temp = getattr(thermostat, "target_temperature", None)
+            else:
+                # Thermostat entity hasn't finished loading yet (e.g. right
+                # after a restart, before platforms finish setup) - fall
+                # back to the old highest-TRV-setpoint default rather than
+                # skip the room entirely.
+                set_temp = self._room_setpoint(room)
+
             room_temp = self._room_temperature(room)
 
             if set_temp is None or room_temp is None:
@@ -248,6 +300,83 @@ class ZealCoordinator(DataUpdateCoordinator[dict[str, ZoneStatus]]):
         if not values:
             return None
         return round(sum(values) / len(values), 2)
+
+    def _find_room(self, room_id: str) -> dict[str, Any] | None:
+        for zone in self.zones:
+            for room in zone.get(ZONE_ROOMS, []):
+                if room.get(ROOM_ID) == room_id:
+                    return room
+        return None
+
+    def _find_room_for_trv(self, entity_id: str) -> dict[str, Any] | None:
+        for zone in self.zones:
+            for room in zone.get(ZONE_ROOMS, []):
+                if entity_id in (room.get(ROOM_TRVS) or []):
+                    return room
+        return None
+
+    def room_current_temperature(self, room_id: str) -> float | None:
+        """Public wrapper for ZealRoomThermostat.current_temperature."""
+        room = self._find_room(room_id)
+        if room is None:
+            return None
+        return self._room_temperature(room)
+
+    async def async_propagate_room_setpoint(self, room_id: str, temp: float) -> None:
+        """Push a new setpoint to every TRV configured for this room.
+
+        Called both when a user adjusts the room's ZealRoomThermostat
+        directly, and when an unexpected change on any one physical TRV in
+        the room is detected (see _async_handle_external_trv_change) - in
+        both cases every TRV in the room should end up showing the same
+        setpoint, since the thermostat is the room's single source of
+        truth, not any individual TRV.
+        """
+        room = self._find_room(room_id)
+        if room is None:
+            return
+        room_name = room.get(ROOM_NAME, room_id)
+        for trv in room.get(ROOM_TRVS, []) or []:
+            state = self.hass.states.get(trv)
+            if state is None or state.state in UNAVAILABLE_STATES:
+                _LOGGER.warning(
+                    "[%s] Can't propagate setpoint to unavailable TRV %s", room_name, trv
+                )
+                continue
+            self._last_written_setpoint[trv] = temp
+            await self.hass.services.async_call(
+                "climate",
+                "set_temperature",
+                {"entity_id": trv, "temperature": temp},
+                blocking=True,
+            )
+
+    async def _async_handle_external_trv_change(
+        self, room: dict[str, Any], entity_id: str, new_temp: Any
+    ) -> None:
+        """A physical TRV's setpoint changed and it wasn't us who wrote it.
+
+        Update the room's thermostat to match (so it displays the real
+        current setpoint) and propagate that value to every other TRV in
+        the room, so a manual change on any one TRV becomes the room's new
+        setpoint everywhere, not just on the TRV someone happened to touch.
+        """
+        try:
+            new_temp = float(new_temp)
+        except (TypeError, ValueError):
+            return
+
+        last_written = self._last_written_setpoint.get(entity_id)
+        if last_written is not None and abs(last_written - new_temp) < 0.01:
+            # This matches what we ourselves just wrote to this TRV - not a
+            # new manual change, just our own propagation being read back.
+            return
+
+        room_id = room.get(ROOM_ID)
+        thermostat = self.room_thermostats.get(room_id)
+        if thermostat is not None:
+            thermostat.apply_external_setpoint(new_temp)
+        await self.async_propagate_room_setpoint(room_id, new_temp)
 
     # ------------------------------------------------------------------
     # Switch control

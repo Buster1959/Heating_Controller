@@ -25,7 +25,7 @@ from .coordinator import ZealCoordinator
 
 _LOGGER = logging.getLogger(__name__)
 
-PLATFORMS: list[str] = ["switch", "sensor"]
+PLATFORMS: list[str] = ["switch", "sensor", "climate"]
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
