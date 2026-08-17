@@ -3,7 +3,7 @@
 </p>
 
 <h1 align="center">ZEAL</h1>
-<p align="center"><em>Zoned, Efficient, Adaptive, Learning — working name, draft project pre-v1</em></p>
+<h1 align="center">Zoned, Efficient, Adaptive, Learning — draft project pre-v1</h1>
 
 <p align="center">
   Zone-based heating control for Home Assistant — configure zones, rooms, TRVs and
