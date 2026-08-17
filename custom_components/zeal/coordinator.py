@@ -133,6 +133,15 @@ class ZealCoordinator(DataUpdateCoordinator[dict[str, ZoneStatus]]):
 
         self._register_state_listener()
 
+        total_rooms = sum(len(z.get(ZONE_ROOMS, [])) for z in self.zones)
+        _LOGGER.info(
+            "ZEAL Coordinator started: %d zone(s), %d room(s) total, "
+            "%d restored last-off timestamp(s)",
+            len(self.zones),
+            total_rooms,
+            len(self._last_off_time),
+        )
+
     @callback
     def async_teardown(self) -> None:
         """Cancel the state-change listener on unload."""
@@ -172,6 +181,10 @@ class ZealCoordinator(DataUpdateCoordinator[dict[str, ZoneStatus]]):
         new_state = event.data["new_state"]
         old_state = event.data["old_state"]
 
+        new_val = new_state.state if new_state else None
+        old_val = old_state.state if old_state else None
+        _LOGGER.debug("Tracked entity changed: %s (%s -> %s)", entity_id, old_val, new_val)
+
         # Only TRVs carry a "temperature" attribute we care about here;
         # sensor state changes fall through to the plain refresh below.
         if new_state is not None and old_state is not None:
@@ -180,6 +193,13 @@ class ZealCoordinator(DataUpdateCoordinator[dict[str, ZoneStatus]]):
             if new_temp is not None and new_temp != old_temp:
                 room = self._find_room_for_trv(entity_id)
                 if room is not None:
+                    _LOGGER.debug(
+                        "TRV setpoint change detected: %s (%s -> %s°C) in room %s",
+                        entity_id,
+                        old_temp,
+                        new_temp,
+                        room.get(ROOM_NAME, room.get(ROOM_ID)),
+                    )
                     self.hass.async_create_task(
                         self._async_handle_external_trv_change(room, entity_id, new_temp)
                     )
@@ -192,6 +212,7 @@ class ZealCoordinator(DataUpdateCoordinator[dict[str, ZoneStatus]]):
     async def _async_update_data(self) -> dict[str, ZoneStatus]:
         results: dict[str, ZoneStatus] = {}
         off_time_changed = False
+        _LOGGER.debug("Evaluation cycle starting (%d zone(s) configured)", len(self.zones))
 
         for zone in self.zones:
             zone_id = zone[ZONE_ID]
@@ -200,9 +221,16 @@ class ZealCoordinator(DataUpdateCoordinator[dict[str, ZoneStatus]]):
             if not zone.get(ZONE_SWITCH):
                 # Nothing to control for this zone - skip entirely, same as
                 # ashp_controller.py's `if "switch" not in floor: continue`.
+                _LOGGER.debug("[%s] No switch configured, skipping zone entirely", zone_name)
                 continue
 
             needs_heat, demand_lines = self._evaluate_zone(zone)
+            _LOGGER.debug(
+                "[%s] needs_heat=%s%s",
+                zone_name,
+                needs_heat,
+                f" ({'; '.join(demand_lines)})" if demand_lines else "",
+            )
             switches_ok, zone_off_changed = await self._async_apply_zone_switches(
                 zone, needs_heat
             )
@@ -220,6 +248,7 @@ class ZealCoordinator(DataUpdateCoordinator[dict[str, ZoneStatus]]):
         if off_time_changed:
             await self._async_persist_runtime_state()
 
+        _LOGGER.debug("Evaluation cycle complete")
         return results
 
     def _evaluate_zone(self, zone: dict[str, Any]) -> tuple[bool, list[str]]:
@@ -233,15 +262,18 @@ class ZealCoordinator(DataUpdateCoordinator[dict[str, ZoneStatus]]):
         demand_lines: list[str] = []
 
         for room in zone.get(ZONE_ROOMS, []):
+            room_name = room.get("name", room.get("room_id", "unknown room"))
+
             if not room.get(ROOM_ACTIVE, True):
+                _LOGGER.debug("  %s: inactive, skipping", room_name)
                 continue
 
-            room_name = room.get("name", room.get("room_id", "unknown room"))
             room_id = room.get(ROOM_ID)
             thermostat = self.room_thermostats.get(room_id)
 
             if thermostat is not None:
                 if getattr(thermostat, "hvac_mode", None) == "off":
+                    _LOGGER.debug("  %s: thermostat is OFF, skipping", room_name)
                     continue
                 set_temp = getattr(thermostat, "target_temperature", None)
             else:
@@ -250,6 +282,11 @@ class ZealCoordinator(DataUpdateCoordinator[dict[str, ZoneStatus]]):
                 # back to the old highest-TRV-setpoint default rather than
                 # skip the room entirely.
                 set_temp = self._room_setpoint(room)
+                _LOGGER.debug(
+                    "  %s: thermostat not yet loaded, using fallback setpoint %s°C",
+                    room_name,
+                    set_temp,
+                )
 
             room_temp = self._room_temperature(room)
 
@@ -266,6 +303,20 @@ class ZealCoordinator(DataUpdateCoordinator[dict[str, ZoneStatus]]):
                 diff = round(set_temp - room_temp, 1)
                 demand_lines.append(
                     f"{room_name}: Set {set_temp}°C, Room {room_temp}°C (Δ {diff}°C)"
+                )
+                _LOGGER.debug(
+                    "  %s: Set %s°C, Room %s°C -> DEMANDING (Δ %s°C)",
+                    room_name,
+                    set_temp,
+                    room_temp,
+                    diff,
+                )
+            else:
+                _LOGGER.debug(
+                    "  %s: Set %s°C, Room %s°C -> satisfied",
+                    room_name,
+                    set_temp,
+                    room_temp,
                 )
 
         return needs_heat, demand_lines
@@ -322,6 +373,23 @@ class ZealCoordinator(DataUpdateCoordinator[dict[str, ZoneStatus]]):
             return None
         return self._room_temperature(room)
 
+    def own_thermostat_entity_ids(self) -> set[str]:
+        """entity_id of every currently-loaded ZealRoomThermostat.
+
+        Used as a hard guard against ever writing a setpoint to one of our
+        own entities as if it were a physical TRV - see the incident this
+        guards against in the Decisions Log. Belt-and-braces alongside the
+        config_flow.py fix that stops such an entity being *selectable* in
+        the first place: this catches it even for a config saved before
+        that fix existed, without requiring the user to notice and fix
+        their saved config first.
+        """
+        return {
+            t.entity_id
+            for t in self.room_thermostats.values()
+            if getattr(t, "entity_id", None)
+        }
+
     async def async_propagate_room_setpoint(self, room_id: str, temp: float) -> None:
         """Push a new setpoint to every TRV configured for this room.
 
@@ -334,9 +402,24 @@ class ZealCoordinator(DataUpdateCoordinator[dict[str, ZoneStatus]]):
         """
         room = self._find_room(room_id)
         if room is None:
+            _LOGGER.debug("Can't propagate setpoint - unknown room_id %s", room_id)
             return
         room_name = room.get(ROOM_NAME, room_id)
-        for trv in room.get(ROOM_TRVS, []) or []:
+        own_entities = self.own_thermostat_entity_ids()
+        trvs = [t for t in (room.get(ROOM_TRVS, []) or []) if t not in own_entities]
+        skipped = (room.get(ROOM_TRVS, []) or [])
+        skipped = [t for t in skipped if t in own_entities]
+        if skipped:
+            _LOGGER.error(
+                "[%s] Room's TRV list includes ZEAL's own entity/entities %s - "
+                "refusing to propagate to them (this would recurse infinitely). "
+                "Reopen Configure for this room and remove them from the TRV "
+                "list; they should no longer be offered as an option.",
+                room_name,
+                skipped,
+            )
+        _LOGGER.debug("[%s] Propagating %s°C to %d TRV(s)", room_name, temp, len(trvs))
+        for trv in trvs:
             state = self.hass.states.get(trv)
             if state is None or state.state in UNAVAILABLE_STATES:
                 _LOGGER.warning(
@@ -350,6 +433,7 @@ class ZealCoordinator(DataUpdateCoordinator[dict[str, ZoneStatus]]):
                 {"entity_id": trv, "temperature": temp},
                 blocking=True,
             )
+            _LOGGER.debug("  -> %s set to %s°C", trv, temp)
 
     async def _async_handle_external_trv_change(
         self, room: dict[str, Any], entity_id: str, new_temp: Any
@@ -364,15 +448,28 @@ class ZealCoordinator(DataUpdateCoordinator[dict[str, ZoneStatus]]):
         try:
             new_temp = float(new_temp)
         except (TypeError, ValueError):
+            _LOGGER.debug("Ignoring non-numeric TRV temperature: %r", new_temp)
             return
 
         last_written = self._last_written_setpoint.get(entity_id)
         if last_written is not None and abs(last_written - new_temp) < 0.01:
             # This matches what we ourselves just wrote to this TRV - not a
             # new manual change, just our own propagation being read back.
+            _LOGGER.debug(
+                "%s: change to %s°C matches our own last write, ignoring (loop guard)",
+                entity_id,
+                new_temp,
+            )
             return
 
         room_id = room.get(ROOM_ID)
+        room_name = room.get(ROOM_NAME, room_id)
+        _LOGGER.debug(
+            "%s: genuine manual change to %s°C, updating room %s and propagating",
+            entity_id,
+            new_temp,
+            room_name,
+        )
         thermostat = self.room_thermostats.get(room_id)
         if thermostat is not None:
             thermostat.apply_external_setpoint(new_temp)
@@ -434,12 +531,16 @@ class ZealCoordinator(DataUpdateCoordinator[dict[str, ZoneStatus]]):
 
         if needs_heat:
             if not blocked_by_delay and state.state != "on":
+                _LOGGER.debug("[%s] Turning ON %s", zone_name, entity_id)
                 await self.hass.services.async_call(
                     "switch", "turn_on", {"entity_id": entity_id}, blocking=True
                 )
                 self._last_on_time[zone_id] = now
+            elif state.state == "on":
+                _LOGGER.debug("[%s] %s already ON, nothing to do", zone_name, entity_id)
         else:
             if state.state != "off":
+                _LOGGER.debug("[%s] Turning OFF %s", zone_name, entity_id)
                 await self.hass.services.async_call(
                     "switch", "turn_off", {"entity_id": entity_id}, blocking=True
                 )
@@ -451,6 +552,8 @@ class ZealCoordinator(DataUpdateCoordinator[dict[str, ZoneStatus]]):
                     )
                 self._last_off_time[zone_id] = now
                 off_time_changed = True
+            else:
+                _LOGGER.debug("[%s] %s already OFF, nothing to do", zone_name, entity_id)
 
         return True, off_time_changed
 

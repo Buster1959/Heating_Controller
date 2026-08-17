@@ -520,6 +520,15 @@ class ZealOptionsFlow(OptionsFlow):
                 continue
             if entry.disabled_by is not None:
                 continue
+            if entry.platform == DOMAIN:
+                # Never offer ZEAL's own entities (e.g. a ZealRoomThermostat)
+                # as if they were a physical TRV/sensor to configure a room
+                # with - this was a real bug: a thermostat manually placed
+                # in its own room's Area got discovered and selected as
+                # that room's "TRV", causing the Coordinator to propagate
+                # the thermostat's setpoint to itself, infinitely. See the
+                # Decisions Log for the full incident.
+                continue
             if device_class is not None:
                 entry_device_class = entry.device_class or entry.original_device_class
                 if entry_device_class != device_class:
