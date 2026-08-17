@@ -220,6 +220,49 @@ that instead.
 
 ## Troubleshooting
 
+**A room's Thermostat entity is stuck, or logs show a repeating stack trace
+between `climate.py` and `coordinator.py`.** Fixed as of version 0.9.0 - this
+was a real bug where a `ZealRoomThermostat` could end up selected as one of
+its own room's TRVs (most likely if you'd assigned the thermostat entity
+itself to that room's HA Area), causing it to propagate a setpoint to
+itself infinitely. Update to 0.9.0+, then reopen **Configure** for the
+affected room and re-save its TRV list — the entity will no longer be
+offered as an option. Check `Settings → Devices & Services → ZEAL HVAC
+System → ⋮ → Download diagnostics` afterward to confirm; it flags directly
+whether any configured TRV is one of ZEAL's own entities.
+
+**Want to see everything currently configured at a glance, not just one
+zone/room at a time in Configure.** `Settings → Devices & Services → ZEAL
+HVAC System → ⋮ → Download diagnostics` — a structured JSON dump of every
+zone, room, TRV/sensor with live state, and each room's thermostat target
+and mode. A fuller always-visible dashboard card is still planned (Milestone
+4); this is the one-click version available now.
+
+**Seeing no log output at all, even though the integration is running.** This
+is expected, not broken — almost everything ZEAL logs is at `debug` level, and
+Home Assistant doesn't show `debug` messages by default. Two ways to turn it on:
+
+- **Quick, one-off (resets on restart):** `Settings → Devices & Services →
+  ZEAL HVAC System → ⋮ → Enable debug logging`, then watch it live at
+  `Settings → System → Logs`.
+- **Persistent across restarts, for active development:** add this to
+  `configuration.yaml`:
+  ```yaml
+  logger:
+    default: info
+    logs:
+      custom_components.zeal: debug
+  ```
+  Restart Core to apply it.
+
+Once enabled, you'll see a line for every evaluation cycle, every room's
+setpoint/temperature/demand decision, every TRV setpoint propagated, every
+switch turned on or off, and why (delay-blocked, override active, etc.) — the
+Coordinator's actual decision trace, not just errors. One line always shows at
+the default log level regardless — an `info`-level line on startup confirming
+how many zones/rooms loaded and how much runtime state was restored, so you
+can at least always confirm the integration started.
+
 **Options Flow shows raw keys (e.g. "name" instead of "Zone name"), stale text,
 or a `formatjs MISSING_VALUE` error after an update.** Two separate issues, both
 in the same area:
