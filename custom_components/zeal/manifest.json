@@ -1,7 +1,7 @@
 {
   "domain": "zeal",
   "name": "ZEAL HVAC System",
-  "version": "0.9.0",
+  "version": "0.9.4",
   "config_flow": true,
   "documentation": "https://github.com/Buster1959/ZEAL",
   "issue_tracker": "https://github.com/Buster1959/ZEAL/issues",

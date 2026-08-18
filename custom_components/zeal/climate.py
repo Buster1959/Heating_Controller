@@ -107,7 +107,23 @@ class ZealRoomThermostat(CoordinatorEntity[ZealCoordinator], RestoreEntity, Clim
         # Thermostat") with no way to tell them apart. Setting it here,
         # per-instance, to include the room name fixes that:
         # "Ground Floor Living Room Thermostat".
-        self._attr_name = f"{room_name} Thermostat"
+        #
+        # The "[ZEAL]" suffix is purely a human-readability aid, added
+        # after a real mix-up during testing: a dummy/real TRV can very
+        # plausibly share this entity's exact name (e.g. a Generic
+        # Thermostat helper or a real TRV integration both commonly default
+        # to "<Room> Thermostat"), and in a plain entity picker the only
+        # visible difference is a small device-name subtitle easy to miss.
+        # This is NOT the safety mechanism against that mix-up, though -
+        # that's own_thermostat_entity_ids() in coordinator.py, which
+        # checks the entity registry's actual platform/owner (reliable,
+        # can't be spoofed or silently broken by a later rename) rather
+        # than string-matching on a display name (fragile - would silently
+        # stop working if this suffix were ever edited away in the UI).
+        # Note "[ZEAL]" only ever appears in this display name, never in
+        # the entity_id itself - entity_ids can't contain brackets, HA
+        # strips/converts them during its own auto-slugify.
+        self._attr_name = f"{room_name} Thermostat [ZEAL]"
 
         self._attr_target_temperature = DEFAULT_TARGET_TEMP
         self._attr_hvac_mode = HVACMode.HEAT
@@ -157,11 +173,13 @@ class ZealRoomThermostat(CoordinatorEntity[ZealCoordinator], RestoreEntity, Clim
         temp = kwargs.get(ATTR_TEMPERATURE)
         if temp is None:
             return
+        _LOGGER.debug("%s: user set target temperature to %s°C", self.entity_id, temp)
         self._attr_target_temperature = float(temp)
         self.async_write_ha_state()
         await self.coordinator.async_propagate_room_setpoint(self._room_id, float(temp))
 
     async def async_set_hvac_mode(self, hvac_mode: HVACMode) -> None:
+        _LOGGER.debug("%s: user set hvac_mode to %s", self.entity_id, hvac_mode)
         self._attr_hvac_mode = hvac_mode
         self.async_write_ha_state()
         # A refresh picks up the mode change immediately (OFF stops this
@@ -173,5 +191,8 @@ class ZealRoomThermostat(CoordinatorEntity[ZealCoordinator], RestoreEntity, Clim
         """Called by the Coordinator when a physical TRV in this room
         changed unexpectedly, to keep this entity's displayed setpoint in
         sync with what the room's TRVs are now actually set to."""
+        _LOGGER.debug(
+            "%s: syncing to %s°C following an external TRV change", self.entity_id, temp
+        )
         self._attr_target_temperature = temp
         self.async_write_ha_state()

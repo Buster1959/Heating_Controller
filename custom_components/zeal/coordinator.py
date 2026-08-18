@@ -43,6 +43,7 @@ from homeassistant.core import Event, EventStateChangedData, HomeAssistant, call
 from homeassistant.helpers.event import async_track_state_change_event
 from homeassistant.helpers.storage import Store
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
+from homeassistant.loader import async_get_integration
 from homeassistant.util import dt as dt_util
 
 from .const import (
@@ -133,14 +134,103 @@ class ZealCoordinator(DataUpdateCoordinator[dict[str, ZoneStatus]]):
 
         self._register_state_listener()
 
-        total_rooms = sum(len(z.get(ZONE_ROOMS, [])) for z in self.zones)
+    async def async_log_startup_banner(self) -> None:
+        """Log a single, visually-bounded block covering every zone and
+        room, at .info() level (visible with no debug logging needed).
+
+        Deliberately verbose and deliberately fenced with separator lines
+        - this only runs once per HA restart (the user restarts the whole
+        of HA on every code change, not just reloads the integration, so
+        this reliably marks the start of each real testing session), and
+        its whole purpose is to make it visually unmistakable in a raw log
+        where a session starts, and give a complete picture of what's
+        configured without needing to enable debug logging or reopen
+        Configure and click through every zone by hand.
+        """
+        # Read the version straight from the loaded manifest, not a
+        # hardcoded/duplicated constant - so this always reflects exactly
+        # what's running. Motivated by a real incident where a pasted
+        # stack trace's line numbers didn't match any deployed version,
+        # with no way to tell from the log alone whether it was current.
+        try:
+            integration = await async_get_integration(self.hass, DOMAIN)
+            version = integration.manifest.get("version", "unknown")
+        except Exception:  # noqa: BLE001 - version string is diagnostic only
+            version = "unknown"
+
+        sep = "=" * 60
+        _LOGGER.info(sep)
+        _LOGGER.info("ZEAL starting up - version %s", version)
+        _LOGGER.info(sep)
+
+        if not self.zones:
+            _LOGGER.info("No zones configured yet - nothing for the Coordinator to action.")
+            _LOGGER.info(sep)
+            return
+
+        total_actioned = 0
+        total_active_rooms = 0
+
+        for zone in self.zones:
+            zone_name = zone.get(ZONE_NAME, zone.get(ZONE_ID))
+            switch = zone.get(ZONE_SWITCH)
+            rooms = zone.get(ZONE_ROOMS, []) or []
+
+            if not switch:
+                _LOGGER.info(
+                    "Zone '%s': NOT ACTIONED - no switch configured (%d room(s) "
+                    "defined but irrelevant until a switch is set)",
+                    zone_name,
+                    len(rooms),
+                )
+                continue
+
+            total_actioned += 1
+            heat_source = zone.get("heat_source", "ashp")
+            delay = zone.get("reenable_delay", DEFAULT_REENABLE_DELAY)
+            active_rooms = [r for r in rooms if r.get(ROOM_ACTIVE, True)]
+            inactive_rooms = [r for r in rooms if not r.get(ROOM_ACTIVE, True)]
+            total_active_rooms += len(active_rooms)
+
+            _LOGGER.info(
+                "Zone '%s': ACTIONED - switch=%s, heat_source=%s, "
+                "reenable_delay=%ss, %d room(s) (%d active, %d inactive)",
+                zone_name,
+                switch,
+                heat_source,
+                delay,
+                len(rooms),
+                len(active_rooms),
+                len(inactive_rooms),
+            )
+
+            for room in active_rooms:
+                room_name = room.get(ROOM_NAME, room.get(ROOM_ID))
+                trvs = room.get(ROOM_TRVS, []) or []
+                sensors = room.get(ROOM_SENSORS, []) or []
+                thermostat = self.room_thermostats.get(room.get(ROOM_ID))
+                _LOGGER.info(
+                    "  - %s: ACTIVE, %d TRV(s) %s, %d sensor(s) %s, thermostat=%s",
+                    room_name,
+                    len(trvs),
+                    trvs or "(none configured)",
+                    len(sensors),
+                    sensors or "(none configured)",
+                    getattr(thermostat, "entity_id", "not yet registered"),
+                )
+            for room in inactive_rooms:
+                room_name = room.get(ROOM_NAME, room.get(ROOM_ID))
+                _LOGGER.info("  - %s: INACTIVE - excluded from demand", room_name)
+
+        _LOGGER.info(sep)
         _LOGGER.info(
-            "ZEAL Coordinator started: %d zone(s), %d room(s) total, "
-            "%d restored last-off timestamp(s)",
-            len(self.zones),
-            total_rooms,
+            "ZEAL startup complete: %d zone(s) actioned, %d active room(s) "
+            "total, %d restored last-off timestamp(s)",
+            total_actioned,
+            total_active_rooms,
             len(self._last_off_time),
         )
+        _LOGGER.info(sep)
 
     @callback
     def async_teardown(self) -> None:
@@ -225,6 +315,17 @@ class ZealCoordinator(DataUpdateCoordinator[dict[str, ZoneStatus]]):
                 continue
 
             needs_heat, demand_lines = self._evaluate_zone(zone)
+
+            if needs_heat and self._zone_all_trvs_off(zone):
+                _LOGGER.info(
+                    "[%s] Every TRV is off (valves closed) - forcing pump off "
+                    "immediately regardless of temperature demand, to avoid "
+                    "running against a fully closed loop",
+                    zone_name,
+                )
+                needs_heat = False
+                demand_lines = ["All TRVs off - pump held off to avoid a closed loop"]
+
             _LOGGER.debug(
                 "[%s] needs_heat=%s%s",
                 zone_name,
@@ -336,6 +437,35 @@ class ZealCoordinator(DataUpdateCoordinator[dict[str, ZoneStatus]]):
             except (TypeError, ValueError):
                 _LOGGER.warning("Could not read setpoint from %s: %r", trv, raw)
         return max(values) if values else None
+
+    def _zone_all_trvs_off(self, zone: dict[str, Any]) -> bool:
+        """True if every TRV across every active room in this zone is
+        confirmed off (climate entity state == "off") - i.e. there is no
+        possible flow path anywhere in the zone. Used to force the zone
+        switch off immediately regardless of what the temperature-based
+        demand calculation says: running a pump against every valve
+        closed risks dead-heading it (pushing water around a fully
+        closed loop).
+
+        Deliberately conservative: any TRV that's unavailable, or whose
+        state isn't literally "off", means we can't be sure the loop is
+        actually closed - the override only fires when every TRV is
+        *confirmed* off, never on an uncertain reading. A zone with no
+        TRVs configured at all is not eligible for this override (nothing
+        to confirm), so normal demand logic applies unmodified.
+        """
+        found_any = False
+        for room in zone.get(ZONE_ROOMS, []):
+            if not room.get(ROOM_ACTIVE, True):
+                continue
+            for trv in room.get(ROOM_TRVS, []) or []:
+                state = self.hass.states.get(trv)
+                if state is None or state.state in UNAVAILABLE_STATES:
+                    return False
+                found_any = True
+                if state.state != "off":
+                    return False
+        return found_any
 
     def _room_temperature(self, room: dict[str, Any]) -> float | None:
         """Average reading among the room's active temperature sensors, or None."""

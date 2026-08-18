@@ -55,6 +55,15 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # with the coordinator and are respected on this very first run.
     await coordinator.async_config_entry_first_refresh()
 
+    # Logged here, not inside coordinator.async_setup(), specifically
+    # because it needs to run *after* platforms have loaded - the banner
+    # reports each room's registered ZealRoomThermostat, which doesn't
+    # exist yet at the point async_setup() runs (climate.py hasn't been
+    # forwarded/set up that early). Logging it before that point would
+    # make every room show "not yet registered" always, regardless of
+    # whether anything was actually wrong - misleading noise, not signal.
+    await coordinator.async_log_startup_banner()
+
     return True
 
 
