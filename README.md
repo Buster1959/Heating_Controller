@@ -60,6 +60,10 @@
   any active room is colder than its room Thermostat's target, and off when none
   are — with a **re-enable delay** (per zone, editable — suggested default depends
   on heat source) after switching off, so a zone can't rapidly cycle.
+- If **every TRV in a zone is closed** (valve shut), the pump is forced off
+  immediately regardless of temperature demand — running against a fully closed
+  loop with nowhere for water to go risks dead-heading the pump. Turning back on
+  once any valve reopens still respects the normal re-enable delay.
 - Each zone gets a **Manual override switch** (created automatically) — turn it on
   to take that zone out of automatic control entirely.
 - Each zone gets a **Demand sensor** showing `Demand` / `No demand`, with which
@@ -229,7 +233,12 @@ itself infinitely. Update to 0.9.0+, then reopen **Configure** for the
 affected room and re-save its TRV list — the entity will no longer be
 offered as an option. Check `Settings → Devices & Services → ZEAL HVAC
 System → ⋮ → Download diagnostics` afterward to confirm; it flags directly
-whether any configured TRV is one of ZEAL's own entities.
+whether any configured TRV is one of ZEAL's own entities. As of 0.9.1,
+ZEAL's own room thermostats also display with a `[ZEAL]` suffix (e.g.
+"Living Room Thermostat [ZEAL]") specifically so they're visually
+distinguishable from a same-named real/dummy TRV in any entity picker —
+though the actual protection against this mix-up doesn't rely on that
+suffix; it's a separate, more reliable check under the hood.
 
 **Want to see everything currently configured at a glance, not just one
 zone/room at a time in Configure.** `Settings → Devices & Services → ZEAL
@@ -258,10 +267,15 @@ Home Assistant doesn't show `debug` messages by default. Two ways to turn it on:
 Once enabled, you'll see a line for every evaluation cycle, every room's
 setpoint/temperature/demand decision, every TRV setpoint propagated, every
 switch turned on or off, and why (delay-blocked, override active, etc.) — the
-Coordinator's actual decision trace, not just errors. One line always shows at
-the default log level regardless — an `info`-level line on startup confirming
-how many zones/rooms loaded and how much runtime state was restored, so you
-can at least always confirm the integration started.
+Coordinator's actual decision trace, not just errors. A full startup banner
+always shows at the default log level regardless — fenced with `====` lines
+so it's unmistakable where a session starts in a scrolling log, listing every
+zone (whether it's actually actioned — i.e. has a switch configured), every
+room's active/inactive status, TRV/sensor entity_ids, and its registered
+Thermostat entity, plus the exact `manifest.json` version that produced it.
+Runs once per HA restart, right after everything's finished loading — reload
+the integration or restart Core, then search your log for `ZEAL starting up`
+to jump straight to it.
 
 **Options Flow shows raw keys (e.g. "name" instead of "Zone name"), stale text,
 or a `formatjs MISSING_VALUE` error after an update.** Two separate issues, both
