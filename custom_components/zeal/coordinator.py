@@ -250,6 +250,20 @@ class ZealCoordinator(DataUpdateCoordinator[dict[str, ZoneStatus]]):
         """
         entity_ids: set[str] = set()
         for zone in self.zones:
+            switch = zone.get(ZONE_SWITCH)
+            if switch:
+                # Tracking the switch itself, not just TRVs/sensors, closes
+                # a real gap: without this, a switch that's momentarily
+                # unavailable at HA startup (e.g. a template-platform
+                # switch that hasn't finished initialising yet - see the
+                # Decisions Log) only gets re-checked on the next periodic
+                # poll, up to 60s later, once it does become available.
+                # Tracking it means that transition triggers an immediate
+                # re-evaluation instead. Also lets ZEAL react promptly if
+                # a switch is toggled manually/externally, outside ZEAL's
+                # own control - not something acted on specially yet, but
+                # better to see it happen immediately than up to 60s late.
+                entity_ids.add(switch)
             for room in zone.get(ZONE_ROOMS, []):
                 if not room.get(ROOM_ACTIVE, True):
                     continue
@@ -373,6 +387,9 @@ class ZealCoordinator(DataUpdateCoordinator[dict[str, ZoneStatus]]):
             thermostat = self.room_thermostats.get(room_id)
 
             if thermostat is not None:
+                _LOGGER.debug(
+                    "  %s: reading thermostat %s", room_name, getattr(thermostat, "entity_id", "?")
+                )
                 if getattr(thermostat, "hvac_mode", None) == "off":
                     _LOGGER.debug("  %s: thermostat is OFF, skipping", room_name)
                     continue
@@ -389,6 +406,12 @@ class ZealCoordinator(DataUpdateCoordinator[dict[str, ZoneStatus]]):
                     set_temp,
                 )
 
+            _LOGGER.debug(
+                "  %s: reading %d sensor(s): %s",
+                room_name,
+                len(room.get(ROOM_SENSORS, []) or []),
+                room.get(ROOM_SENSORS, []) or "(none configured)",
+            )
             room_temp = self._room_temperature(room)
 
             if set_temp is None or room_temp is None:
@@ -399,25 +422,30 @@ class ZealCoordinator(DataUpdateCoordinator[dict[str, ZoneStatus]]):
                 )
                 continue
 
-            if room_temp < set_temp:
+            diff = round(set_temp - room_temp, 2)
+            _LOGGER.debug(
+                "  %s: Setpoint - Temperature = %s - %s = %s",
+                room_name,
+                set_temp,
+                room_temp,
+                diff,
+            )
+
+            if diff > 0:
                 needs_heat = True
-                diff = round(set_temp - room_temp, 1)
                 demand_lines.append(
                     f"{room_name}: Set {set_temp}°C, Room {room_temp}°C (Δ {diff}°C)"
                 )
                 _LOGGER.debug(
-                    "  %s: Set %s°C, Room %s°C -> DEMANDING (Δ %s°C)",
+                    "  %s: Δ %s°C > 0 -> DEMANDING",
                     room_name,
-                    set_temp,
-                    room_temp,
                     diff,
                 )
             else:
                 _LOGGER.debug(
-                    "  %s: Set %s°C, Room %s°C -> satisfied",
+                    "  %s: Δ %s°C <= 0 -> satisfied",
                     room_name,
-                    set_temp,
-                    room_temp,
+                    diff,
                 )
 
         return needs_heat, demand_lines
@@ -473,14 +501,22 @@ class ZealCoordinator(DataUpdateCoordinator[dict[str, ZoneStatus]]):
         for sensor in room.get(ROOM_SENSORS, []) or []:
             state = self.hass.states.get(sensor)
             if state is None or state.state in UNAVAILABLE_STATES:
+                _LOGGER.debug("    sensor %s = unavailable/missing, skipped", sensor)
                 continue
             try:
-                values.append(float(state.state))
+                value = float(state.state)
+                values.append(value)
+                _LOGGER.debug("    sensor %s = %s", sensor, value)
             except (TypeError, ValueError):
                 _LOGGER.warning("Could not read temperature from %s: %r", sensor, state.state)
         if not values:
             return None
-        return round(sum(values) / len(values), 2)
+        result = round(sum(values) / len(values), 2)
+        if len(values) > 1:
+            _LOGGER.debug(
+                "    -> averaged %d sensor(s): %s", len(values), result
+            )
+        return result
 
     def _find_room(self, room_id: str) -> dict[str, Any] | None:
         for zone in self.zones:
@@ -641,7 +677,16 @@ class ZealCoordinator(DataUpdateCoordinator[dict[str, ZoneStatus]]):
         entity_id = zone.get(ZONE_SWITCH)
         state = self.hass.states.get(entity_id)
         if state is None or state.state in UNAVAILABLE_STATES:
-            _LOGGER.warning("[%s] Switch %s is unavailable, skipping", zone_name, entity_id)
+            _LOGGER.warning(
+                "[%s] Switch %s is unavailable, skipping this cycle. If this "
+                "is right after a restart, it's usually transient (e.g. a "
+                "template-platform switch that hasn't finished initialising "
+                "yet) and self-corrects on the very next state change or "
+                "poll. If it persists beyond startup, check the entity "
+                "still exists and is spelled correctly in Configure.",
+                zone_name,
+                entity_id,
+            )
             return False, False
 
         blocked_by_delay = False

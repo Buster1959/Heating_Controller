@@ -18,14 +18,74 @@ import logging
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.storage import Store
 
-from .const import CONF_ZONES, DOMAIN, STORAGE_KEY_FMT, STORAGE_VERSION
+from .const import CONF_ZONES, DOMAIN, ROOM_ID, STORAGE_KEY_FMT, STORAGE_VERSION, ZONE_ID, ZONE_ROOMS
 from .coordinator import ZealCoordinator
 
 _LOGGER = logging.getLogger(__name__)
 
 PLATFORMS: list[str] = ["switch", "sensor", "climate"]
+
+
+async def _async_cleanup_orphaned_entities(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Remove devices/entities for zones or rooms no longer in config.
+
+    Home Assistant does not automatically remove entities or devices when
+    a config entry's saved options shrink - every async_add_entities call
+    only ever *adds*. Without this, renaming or removing a zone/room in
+    Configure leaves the old device/entities behind permanently, silently
+    accumulating "ghost" devices - found via a real incident where two old
+    zone devices ("Ground Floor", "First Floor") persisted for good after
+    the zones were rebuilt as "Zone 1"/"Zone 2".
+
+    Two separate checks, since they catch different cases:
+      * A whole ZONE removed -> its device (identified by zone_id) no
+        longer matches any current zone -> remove the device, which
+        cascades to remove every entity registered under it (the zone's
+        override switch, demand sensor, and every room's thermostat, since
+        all of a zone's room thermostats share that zone's device).
+      * A ROOM removed from a zone that still exists -> the zone's device
+        is still valid, so the check above won't catch it. Its
+        ZealRoomThermostat's own unique_id embeds the room_id directly
+        (f"{entry.entry_id}_{room_id}_thermostat"), checked independently.
+    """
+    zones = entry.options.get(CONF_ZONES, [])
+    valid_zone_ids = {z[ZONE_ID] for z in zones}
+    valid_room_ids = {r[ROOM_ID] for z in zones for r in z.get(ZONE_ROOMS, [])}
+
+    device_registry = dr.async_get(hass)
+    entity_registry = er.async_get(hass)
+    prefix = f"{entry.entry_id}_"
+
+    for device in dr.async_entries_for_config_entry(device_registry, entry.entry_id):
+        for domain, identifier in device.identifiers:
+            if domain != DOMAIN or not identifier.startswith(prefix):
+                continue
+            zone_id = identifier[len(prefix):]
+            if zone_id not in valid_zone_ids:
+                _LOGGER.info(
+                    "Removing orphaned device for a zone no longer in config: %s (%s)",
+                    device.name,
+                    device.id,
+                )
+                device_registry.async_remove_device(device.id)
+
+    suffix = "_thermostat"
+    for entity in er.async_entries_for_config_entry(entity_registry, entry.entry_id):
+        if not entity.unique_id or not entity.unique_id.endswith(suffix):
+            continue
+        if not entity.unique_id.startswith(prefix):
+            continue
+        room_id = entity.unique_id[len(prefix):-len(suffix)]
+        if room_id not in valid_room_ids:
+            _LOGGER.info(
+                "Removing orphaned thermostat entity for a room no longer in config: %s",
+                entity.entity_id,
+            )
+            entity_registry.async_remove(entity.entity_id)
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -49,6 +109,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     entry.async_on_unload(entry.add_update_listener(_async_update_listener))
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+
+    # Runs after platforms load (not before) so the currently-valid
+    # entities have already been (re-)registered and won't be mistaken
+    # for orphans - only genuinely stale devices/entities from a
+    # zone/room that no longer exists in config get removed.
+    await _async_cleanup_orphaned_entities(hass, entry)
 
     # First evaluation + switch pass happens after platforms are set up, so
     # the override switches (switch.py) have already registered themselves
