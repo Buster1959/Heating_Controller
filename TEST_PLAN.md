@@ -5,6 +5,15 @@ and the Coordinator control loop (Milestone 2, built, not yet run against
 hardware). Written to be usable as-is by anyone testing this from a fresh
 HA install — every step names the exact screen, tab, and field.*
 
+> **Fastest option for verifying the Coordinator's own logic:**
+> `tests/` has an automated pytest suite (21 tests, runs in under a
+> second) covering the demand-calculation combination matrix directly —
+> see `tests/README.md`. This test plan is for everything that suite
+> *can't* cover: the actual Config Flow/Options Flow UI, real (or dummy)
+> hardware behaving as expected, and anything end-to-end. Use both —
+> the automated suite for "did I break the logic," this document for
+> "does it actually work against something real."
+
 ## 0. Scope and known gaps — read first
 
 - **No multi-fuel / heat-source selector exists yet.** `heat_source` and
@@ -53,6 +62,15 @@ deCONZ, etc.), not under ZEAL. Each zone also appears as its own **Device**
 containing those same two entities.
 
 ## 2. Build a fully virtual test rig (UI only, no YAML, no real hardware)
+
+> **Faster alternative for a full multi-zone/multi-room rig:**
+> `test_fixtures/dev_environment.yaml` (+ its companion `SETUP.md`) gives a
+> deterministic, pre-built 2-zone/6-room dummy rig in one file — the same
+> shape this section builds by hand, but guaranteed identical every time
+> it's used, which matters if more than one person (or session) is testing
+> against it. This section's UI-only walkthrough is still the right choice
+> if you specifically want zero YAML edits or just need one quick isolated
+> room to test against.
 
 This gives you one dummy "room" — a TRV with an adjustable setpoint and a
 temperature sensor with an adjustable reading — plus a dedicated dummy
