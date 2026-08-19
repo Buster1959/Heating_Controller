@@ -1,0 +1,109 @@
+views:
+  - type: sections
+    sections:
+      - type: grid
+        cards:
+          - type: heading
+            heading: Floor1
+            heading_style: title
+          - type: tile
+            entity: input_number.floor1_rooma_temp
+            name: Floor1 RoomA Temp (adjust here)
+          - type: tile
+            entity: sensor.floor1_rooma_temperature
+          - type: tile
+            entity: input_number.floor1_roomb_temp
+            name: Floor1 RoomB Temp (adjust here)
+          - type: tile
+            entity: sensor.floor1_roomb_temperature
+          - type: tile
+            entity: input_number.floor1_roomc_temp
+            name: Floor1 RoomC Temp (adjust here)
+          - type: tile
+            entity: sensor.floor1_roomc_temperature
+          - type: tile
+            entity: climate.floor1_rooma_thermostat
+            features:
+              - type: target-temperature
+          - type: tile
+            entity: climate.zone_1_floor1_rooma_thermostat_zeal
+            features:
+              - type: target-temperature
+            name: ZEAL Floor 1 Room A
+          - type: tile
+            entity: climate.floor1_roomb_thermostat
+            features:
+              - type: target-temperature
+          - type: tile
+            entity: climate.zone_1_floor1_roomb_thermostat_zeal
+            features:
+              - type: target-temperature
+            name: ZEAL Floor 1 Room B
+          - type: tile
+            entity: climate.floor1_roomc_thermostat
+            features:
+              - type: target-temperature
+          - type: tile
+            entity: climate.zone_1_floor1_roomc_thermostat_zeal
+            features:
+              - type: target-temperature
+            name: ZEAL Floor 1 Room C
+          - type: tile
+            entity: input_boolean.floor1_pump
+            vertical: false
+            features:
+              - type: toggle
+            features_position: bottom
+      - type: grid
+        cards:
+          - type: heading
+            heading: Floor2
+            heading_style: title
+          - type: tile
+            entity: input_number.floor2_rooma_temp
+            name: Floor2 RoomA Temp (adjust here)
+          - type: tile
+            entity: sensor.floor2_rooma_temperature
+          - type: tile
+            entity: input_number.floor2_roomb_temp
+            name: Floor2 RoomB Temp (adjust here)
+          - type: tile
+            entity: sensor.floor2_roomb_temperature
+          - type: tile
+            entity: input_number.floor2_roomc_temp
+            name: Floor2 RoomC Temp (adjust here)
+          - type: tile
+            entity: sensor.floor2_roomc_temperature
+          - type: tile
+            entity: climate.floor2_rooma_thermostat
+            features:
+              - type: target-temperature
+          - type: tile
+            entity: climate.zone_2_floor2_rooma_thermostat_zeal
+            features:
+              - type: target-temperature
+            name: ZEAL Floor 2 Room A
+          - type: tile
+            entity: climate.floor2_roomb_thermostat
+            features:
+              - type: target-temperature
+          - type: tile
+            entity: climate.zone_2_floor2_roomb_thermostat_zeal
+            features:
+              - type: target-temperature
+            name: ZEAL Floor 2 Room B
+          - type: tile
+            entity: climate.floor2_roomc_thermostat
+            features:
+              - type: target-temperature
+          - type: tile
+            entity: climate.zone_2_floor2_roomc_thermostat_zeal
+            features:
+              - type: target-temperature
+            name: ZEAL Floor 2 Room C
+          - type: tile
+            entity: input_boolean.floor2_pump
+            vertical: false
+            features:
+              - type: toggle
+            features_position: bottom

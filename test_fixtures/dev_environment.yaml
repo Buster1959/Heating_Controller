@@ -1,0 +1,259 @@
+# =============================================================================
+# ZEAL dev/test fixture — deterministic dummy rig
+# =============================================================================
+#
+# Purpose: a single, versioned, guaranteed-consistent test environment for
+# ZEAL — so anyone testing (including a different session of Claude, or
+# another contributor) gets identical entities with identical names, rather
+# than hand-building dummy hardware ad hoc and risking exactly the kind of
+# silent naming mismatch that cost a full debugging session on 18 Aug 2026
+# (an input_number the dashboard adjusted was never the one the template
+# sensor actually read - two similarly-named entities that looked like one).
+#
+# Deliberately uses ABSTRACT names (Floor1/Floor2, RoomA/RoomB/RoomC) rather
+# than realistic ones (Kitchen/Living Room) - nobody would ever name a real
+# room this way, which makes it structurally impossible for this fixture to
+# collide with anything else in a real or future test instance.
+#
+# Structure: 2 floors, 3 rooms per floor (6 rooms total), one dummy TRV and
+# one dummy temperature sensor per room, one pump switch per floor.
+#
+# HOW TO USE:
+#   1. Either paste this whole file's content into your configuration.yaml,
+#      or save it as-is and add `homeassistant: packages: !include_dir_named
+#      test_fixtures` (or a single `!include test_fixtures/dev_environment.yaml`
+#      merged into the relevant top-level keys) - either works, this file
+#      doesn't assume which.
+#   2. Restart Home Assistant Core.
+#   3. ONE MANUAL STEP THAT CANNOT BE DONE VIA YAML: create 6 Areas (Settings
+#      -> Areas & Zones) named exactly "Floor1 RoomA", "Floor1 RoomB",
+#      "Floor1 RoomC", "Floor2 RoomA", "Floor2 RoomB", "Floor2 RoomC" (or
+#      your own naming - just be consistent), then assign each room's
+#      sensor.* and climate.*_thermostat entity to the matching Area.
+#      ZEAL's Options Flow discovers TRVs/sensors BY AREA, so this step is
+#      required regardless of how carefully the YAML itself is written.
+#   4. In ZEAL's Options Flow: create 2 zones ("Floor1" -> switch.floor1_pump,
+#      "Floor2" -> switch.floor2_pump), each containing the 3 matching Areas
+#      as rooms.
+#
+# To reset a room's temperature during testing, just change its ONE
+# input_number - e.g. input_number.floor1_rooma_temp. There is exactly one
+# input_number per room; nothing else to accidentally desync it from.
+# =============================================================================
+
+input_number:
+  floor1_rooma_temp:
+    name: "Floor1 RoomA Temp Input"
+    min: -10
+    max: 40
+    step: 0.1
+    unit_of_measurement: "°C"
+    mode: box
+    initial: 20
+  floor1_roomb_temp:
+    name: "Floor1 RoomB Temp Input"
+    min: -10
+    max: 40
+    step: 0.1
+    unit_of_measurement: "°C"
+    mode: box
+    initial: 20
+  floor1_roomc_temp:
+    name: "Floor1 RoomC Temp Input"
+    min: -10
+    max: 40
+    step: 0.1
+    unit_of_measurement: "°C"
+    mode: box
+    initial: 20
+  floor2_rooma_temp:
+    name: "Floor2 RoomA Temp Input"
+    min: -10
+    max: 40
+    step: 0.1
+    unit_of_measurement: "°C"
+    mode: box
+    initial: 20
+  floor2_roomb_temp:
+    name: "Floor2 RoomB Temp Input"
+    min: -10
+    max: 40
+    step: 0.1
+    unit_of_measurement: "°C"
+    mode: box
+    initial: 20
+  floor2_roomc_temp:
+    name: "Floor2 RoomC Temp Input"
+    min: -10
+    max: 40
+    step: 0.1
+    unit_of_measurement: "°C"
+    mode: box
+    initial: 20
+
+input_boolean:
+  # Internal-only: each dummy TRV's own "heater" actuator, required by
+  # generic_thermostat's own config but never touched by a tester directly -
+  # not the same thing as the pump switches below.
+  floor1_rooma_heater:
+    name: "Floor1 RoomA Dummy TRV Internal Heater"
+  floor1_roomb_heater:
+    name: "Floor1 RoomB Dummy TRV Internal Heater"
+  floor1_roomc_heater:
+    name: "Floor1 RoomC Dummy TRV Internal Heater"
+  floor2_rooma_heater:
+    name: "Floor2 RoomA Dummy TRV Internal Heater"
+  floor2_roomb_heater:
+    name: "Floor2 RoomB Dummy TRV Internal Heater"
+  floor2_roomc_heater:
+    name: "Floor2 RoomC Dummy TRV Internal Heater"
+
+  # The actual pump switches ZEAL controls - one per floor/zone.
+  floor1_pump:
+    name: "Floor1 Pump (internal)"
+  floor2_pump:
+    name: "Floor2 Pump (internal)"
+
+template:
+  - sensor:
+      - name: "Floor1 RoomA Temperature"
+        unique_id: floor1_rooma_temperature_sensor
+        device_class: temperature
+        state_class: measurement
+        unit_of_measurement: "°C"
+        state: "{{ states('input_number.floor1_rooma_temp') }}"
+
+      - name: "Floor1 RoomB Temperature"
+        unique_id: floor1_roomb_temperature_sensor
+        device_class: temperature
+        state_class: measurement
+        unit_of_measurement: "°C"
+        state: "{{ states('input_number.floor1_roomb_temp') }}"
+
+      - name: "Floor1 RoomC Temperature"
+        unique_id: floor1_roomc_temperature_sensor
+        device_class: temperature
+        state_class: measurement
+        unit_of_measurement: "°C"
+        state: "{{ states('input_number.floor1_roomc_temp') }}"
+
+      - name: "Floor2 RoomA Temperature"
+        unique_id: floor2_rooma_temperature_sensor
+        device_class: temperature
+        state_class: measurement
+        unit_of_measurement: "°C"
+        state: "{{ states('input_number.floor2_rooma_temp') }}"
+
+      - name: "Floor2 RoomB Temperature"
+        unique_id: floor2_roomb_temperature_sensor
+        device_class: temperature
+        state_class: measurement
+        unit_of_measurement: "°C"
+        state: "{{ states('input_number.floor2_roomb_temp') }}"
+
+      - name: "Floor2 RoomC Temperature"
+        unique_id: floor2_roomc_temperature_sensor
+        device_class: temperature
+        state_class: measurement
+        unit_of_measurement: "°C"
+        state: "{{ states('input_number.floor2_roomc_temp') }}"
+
+  - switch:
+      # Friendly names deliberately "Pump Floor 1" / "Pump Floor 2" - exactly
+      # what gets picked in ZEAL's zone-switch selector in Configure.
+      - name: "Pump Floor 1"
+        unique_id: floor1_pump_switch
+        state: "{{ is_state('input_boolean.floor1_pump', 'on') }}"
+        turn_on:
+          - action: input_boolean.turn_on
+            target:
+              entity_id: input_boolean.floor1_pump
+        turn_off:
+          - action: input_boolean.turn_off
+            target:
+              entity_id: input_boolean.floor1_pump
+
+      - name: "Pump Floor 2"
+        unique_id: floor2_pump_switch
+        state: "{{ is_state('input_boolean.floor2_pump', 'on') }}"
+        turn_on:
+          - action: input_boolean.turn_on
+            target:
+              entity_id: input_boolean.floor2_pump
+        turn_off:
+          - action: input_boolean.turn_off
+            target:
+              entity_id: input_boolean.floor2_pump
+
+climate:
+  - platform: generic_thermostat
+    name: "Floor1 RoomA Thermostat"
+    unique_id: floor1_rooma_dummy_trv
+    heater: input_boolean.floor1_rooma_heater
+    target_sensor: sensor.floor1_rooma_temperature
+    min_temp: 10
+    max_temp: 30
+    target_temp: 20
+    cold_tolerance: 0.2
+    hot_tolerance: 0.2
+    ac_mode: false
+
+  - platform: generic_thermostat
+    name: "Floor1 RoomB Thermostat"
+    unique_id: floor1_roomb_dummy_trv
+    heater: input_boolean.floor1_roomb_heater
+    target_sensor: sensor.floor1_roomb_temperature
+    min_temp: 10
+    max_temp: 30
+    target_temp: 20
+    cold_tolerance: 0.2
+    hot_tolerance: 0.2
+    ac_mode: false
+
+  - platform: generic_thermostat
+    name: "Floor1 RoomC Thermostat"
+    unique_id: floor1_roomc_dummy_trv
+    heater: input_boolean.floor1_roomc_heater
+    target_sensor: sensor.floor1_roomc_temperature
+    min_temp: 10
+    max_temp: 30
+    target_temp: 20
+    cold_tolerance: 0.2
+    hot_tolerance: 0.2
+    ac_mode: false
+
+  - platform: generic_thermostat
+    name: "Floor2 RoomA Thermostat"
+    unique_id: floor2_rooma_dummy_trv
+    heater: input_boolean.floor2_rooma_heater
+    target_sensor: sensor.floor2_rooma_temperature
+    min_temp: 10
+    max_temp: 30
+    target_temp: 20
+    cold_tolerance: 0.2
+    hot_tolerance: 0.2
+    ac_mode: false
+
+  - platform: generic_thermostat
+    name: "Floor2 RoomB Thermostat"
+    unique_id: floor2_roomb_dummy_trv
+    heater: input_boolean.floor2_roomb_heater
+    target_sensor: sensor.floor2_roomb_temperature
+    min_temp: 10
+    max_temp: 30
+    target_temp: 20
+    cold_tolerance: 0.2
+    hot_tolerance: 0.2
+    ac_mode: false
+
+  - platform: generic_thermostat
+    name: "Floor2 RoomC Thermostat"
+    unique_id: floor2_roomc_dummy_trv
+    heater: input_boolean.floor2_roomc_heater
+    target_sensor: sensor.floor2_roomc_temperature
+    min_temp: 10
+    max_temp: 30
+    target_temp: 20
+    cold_tolerance: 0.2
+    hot_tolerance: 0.2
+    ac_mode: false
