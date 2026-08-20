@@ -64,6 +64,20 @@
   immediately regardless of temperature demand — running against a fully closed
   loop with nowhere for water to go risks dead-heading the pump. Turning back on
   once any valve reopens still respects the normal re-enable delay.
+- A **battery-dead, unavailable, or stalled TRV/sensor** gets a persistent
+  notification (debounced ~5 minutes to ignore brief mesh blips) naming
+  exactly which entity and whether other TRVs/sensors still cover that room —
+  dismissed automatically the moment it recovers. Catches Zigbee's specific
+  failure mode too, not just outright unavailable: a device that's silently
+  stopped reporting while its last value still looks normal (Z-Wave reliably
+  marks a dead node unavailable; Zigbee doesn't). The room itself degrades
+  gracefully the whole time (other sensors keep averaging, other TRVs keep
+  responding, and a stalled reading is never trusted for a real decision) —
+  this only adds visibility on top, it doesn't change how the room is
+  controlled.
+- Every setpoint is clamped to a sane 5–30°C range before it can reach a real
+  TRV, logged loudly if it ever has to — a bug can't silently drive a room to
+  an extreme value.
 - Each zone gets a **Manual override switch** (created automatically) — turn it on
   to take that zone out of automatic control entirely.
 - Each zone gets a **Demand sensor** showing `Demand` / `No demand`, with which
@@ -224,6 +238,25 @@ that instead.
 
 ## Troubleshooting
 
+**A room's setpoint got silently changed to 5°C or 30°C, with a WARNING in
+the log about a clamped out-of-range value.** As of version 0.11.0, ZEAL
+actively enforces a 5–30°C sane range on every setpoint before it can reach
+a real TRV — not just declared as UI metadata, genuinely blocked. If you see
+this warning, something upstream produced a value outside that range; it's
+worth investigating what did, since this should never happen in normal
+operation. The room itself is safe either way — it got clamped to a sane
+edge value, not the bad one.
+
+**Old zone/room devices or entities still showing after a rename or removal.**
+Fixed as of version 0.10.0 - versions before that never cleaned up a
+device/entity when a zone or room was removed via Configure, so
+renaming-by-recreating (rather than editing in place) left the old one
+behind permanently. Update and restart once; existing ghost
+devices/entities get cleaned up automatically on that first restart, no
+manual deletion needed. If it persists on 0.10.0+, check `Settings →
+Devices & Services → ZEAL HVAC System` shows exactly as many devices as
+zones actually configured in Configure — if not, that's worth reporting.
+
 **A room's Thermostat entity is stuck, or logs show a repeating stack trace
 between `climate.py` and `coordinator.py`.** Fixed as of version 0.9.0 - this
 was a real bug where a `ZealRoomThermostat` could end up selected as one of
@@ -302,6 +335,11 @@ won't have anything to auto-discover.
 Issues and pull requests welcome. This is an early-stage personal project moving
 through the milestones above in order — see the pinned issues / project board for
 current status.
+
+Before opening a PR: `pip install -r requirements_test.txt && pytest tests/ -v`
+— covers the Coordinator's core demand logic in under a second. See
+`tests/README.md` for what's covered and the norm for adding a test alongside
+any bug fix.
 
 ## License
 
